@@ -1,8 +1,8 @@
-﻿using System;
+﻿using System.IO;
 
 namespace Server
 {
-    using System.Collections.Generic;
+    using System;
     using System.Net;
     using System.Net.Sockets;
     using System.Text;
@@ -19,7 +19,6 @@ namespace Server
     public class Server
     {
         public static string data = null;
-        public static Dictionary<string, string> state = new Dictionary<string, string>();
 
         public static void StartListening()
         {
@@ -35,7 +34,9 @@ namespace Server
             {
                 listener.Bind(localEndPoint);
                 listener.Listen(10);
-
+                var kvStore = new KeyValueStore();
+                string logsPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), @"..\..\..\..\Logs"));
+                Catchup(logsPath, kvStore);
                 while (true)
                 {
                     Console.WriteLine("Waiting for a connection ....");
@@ -47,19 +48,23 @@ namespace Server
                         var bytesRec = handler.Receive(bytes);
                         data = Encoding.ASCII.GetString(bytes, 0, bytesRec);
                         Console.WriteLine($"Text received : {data}");
+                        var response = "";
 
-                        var dataArr = data.Split(" ");
-                        var command = dataArr[0];
-                        var key = dataArr[1];
-                        var value = dataArr[2];
-                        
-                        var msg = Encoding.ASCII.GetBytes(data);
+                        response = kvStore.Execute(data);
+
+                        var msg = Encoding.ASCII.GetBytes(response);
                         handler.Send(msg);
                         if (data.Contains("<EOF>"))
                         {
                             Console.WriteLine("break condition hit");
                             break;
                         }
+
+                        using (var outputFile = new StreamWriter(Path.Combine(logsPath, "commands.txt"), true))
+                        {
+                            outputFile.WriteLine(data);
+                        }
+
                     }
                     handler.Shutdown(SocketShutdown.Both);
                     handler.Close();
@@ -74,6 +79,22 @@ namespace Server
             
             Console.WriteLine("\nPress ENTER to continue ....");
             Console.Read();
+
+        }
+
+        private static void Catchup(string basePath, KeyValueStore kvStore)
+        {
+            var file  = Path.Combine(basePath, "commands.txt");
+            if (!File.Exists(file))
+            {
+                return;
+            }
+
+            string[] operations = File.ReadAllLines(file);
+            foreach (var operation in operations)
+            {
+                kvStore.Execute(operation);
+            }
 
         }
     }

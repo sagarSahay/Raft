@@ -1,0 +1,7 @@
+set abc 23
+get abc
+get abc
+set cde 34
+get cde
+get abc
+get cde
